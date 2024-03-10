@@ -1,5 +1,6 @@
-import { ArrayKey, JSONValueType, ObjectKey } from "./token/jsonToken";
+import { JSONValueType } from "./token/jsonToken";
 import { TokenManager } from "./tokenManager";
+import { SyntaxError } from "./error/syntaxError";
 
 /** @todo backslash escaping */
 
@@ -12,11 +13,13 @@ enum Flag {
     DOUBLE_QUOTE = 34, // "
     COLON = 58, // :
     COMMA = 44, // ,
+    POINT = 46, // .
     SPACE = 32, //  
     SLASH = 47, // /
     BACKSLASH = 92, // \
     UNDERSCORE = 95, // _
     HYPHEN = 45, // -
+    NEWLINE = 10, // \n
 }
 
 enum Keyword {
@@ -38,14 +41,20 @@ export class JSONCompiler<T = any> {
     private atValue: boolean = false;
     private atString: boolean = false;
     private atNumber: boolean = false;
+    private atObject: boolean = false;
+    private atArray: boolean = false;
 
     private tempKey: string = "";
     private tempValue: string = ""; // for any type
     private tempValueType: ValueType;
-    private tempKeyword: Keyword;
+    private tempLayer: number;
+    private tempObject: string = "";
+    private tempArray: string = "";
 
     public constructor(private jsonStr: string) {
         this.tokenMgr = new TokenManager();
+
+        this.jsonStr = this.jsonStr.trim();
 
         this.tokenize();
         this.tokenMgr.print(); // for dev
@@ -54,28 +63,57 @@ export class JSONCompiler<T = any> {
     public tokenize(): void {
         for(let i = 0; i < this.jsonStr.length; i++) {
             const symbol = this.jsonStr[i];
-            const code = symbol.charCodeAt(0);
+            const code = this.getCharCode(i);
+
+            if(this.atObject) {
+                this.tempObject += symbol;
+
+                switch(code) {
+                    case Flag.LEFT_BRACE:
+                    case Flag.LEFT_BRACKET:
+                        this.layer++;
+                        break;
+                    case Flag.RIGHT_BRACE:
+                    case Flag.RIGHT_BRACKET:
+                        if(this.layer === this.tempLayer) {
+                            this.atObject = false;
+                            this.tempLayer = undefined;
+                        }
+                        this.layer--;
+                        break;
+                }
+                continue;
+            }
 
             switch(code) {
                 case Flag.LEFT_BRACE:
                     this.layer++;
                     if(i === 0) {
-                        this.tokenMgr.createTree<ObjectKey>();
+                        this.tokenMgr.createObjectTree();
                         this.mode = JSONValueType.OBJECT;
+                    } else if(!this.atObject) { // object start
+                        this.atObject = true;
+                        this.tempLayer = this.layer;
+                        this.tempObject += symbol;
                     }
                     break;
                 case Flag.LEFT_BRACKET:
                     this.layer++;
                     if(i === 0) {
-                        this.tokenMgr.createTree<ArrayKey>();
+                        this.tokenMgr.createArrayTree();
                         this.mode = JSONValueType.ARRAY;
                     }
                     break;
                 case Flag.RIGHT_BRACE:
-                    this.layer--;
+                    if(this.atValue && this.tempObject.length === 0) {
+                        this.atNumber = false; // number end
+                        this.atValue = false; // value end
+                        this.pushObjectItem();
+                    } else if(this.tempObject.length !== 0) { // object end
+                        this.pushObject();
+                    }
 
-                    if(this.atValue) this.atValue = false; // value end
-                    this.pushObjectItem();
+                    this.layer--;
                     break;
                 case Flag.RIGHT_BRACKET:
                     this.layer--;
@@ -91,15 +129,26 @@ export class JSONCompiler<T = any> {
                     } else if(this.atValue && this.atString) { // string end
                         this.atString = false;
                     } else {
-                        // @error unexpected quote
+                        throw new SyntaxError("Unexpected quote", i);
                     }
                     break;
                 case Flag.COLON:
                     if(!this.atKey) this.atValue = true; // value start
                     break;
                 case Flag.COMMA:
-                    if(this.atValue) this.atValue = false; // value end
-                    this.pushObjectItem();
+                    if(this.atValue && this.tempObject.length === 0 && this.tempArray.length === 0) {
+                        this.atNumber = false; // number end
+                        this.atValue = false; // value end
+                        this.pushObjectItem();
+                    } else if(this.tempObject.length !== 0) { // object end
+                        this.atValue = false;
+                        this.pushObject();
+                    } else if(this.tempArray.length !== 0) { // array end
+                        this.atValue = false;
+                        /** @todo */
+                    } else {
+                        throw new SyntaxError("Unexpected comma", i);
+                    }
                     break;
                 /* Number */
                 case 48: // 0
@@ -112,11 +161,19 @@ export class JSONCompiler<T = any> {
                 case 55: // 7
                 case 56: // 8
                 case 57: // 9
-                    if(!this.atValue || !this.atNumber) {
-                        // @error unexpected number
+                    if(!this.atValue && !this.atNumber) {
+                        throw new SyntaxError("Unexpected number \""+ symbol +"\"", i);
                     }
 
-                    if(this.tempValue.length === 0) this.tempValueType = ValueType.NUMBER; // number start
+                    if(this.atString) {
+                        this.tempValue += symbol;
+                        continue;
+                    }
+
+                    if(this.tempValue.length === 0) { // number start
+                        this.tempValueType = ValueType.NUMBER;
+                        this.atNumber = true;
+                    }
                     this.tempValue += symbol;
                     break;
                 /* String */
@@ -127,46 +184,70 @@ export class JSONCompiler<T = any> {
                         this.tempValue += symbol;
                     } else if(
                         this.atValue &&
-                        code === 116                              /*t*/ &&
-                        this.jsonStr[i + 1].charCodeAt(0) === 114 /*r*/ &&
-                        this.jsonStr[i + 2].charCodeAt(0) === 117 /*u*/ &&
-                        this.jsonStr[i + 3].charCodeAt(0) === 101 /*e*/
+                        !this.atString &&
+                        code === Flag.HYPHEN
+                    ) { // negative sign
+                        if(this.tempValue.length !== 0) {
+                            throw new SyntaxError("Invalid number", i);
+                        }
+                        this.tempValueType = ValueType.NUMBER;
+                        this.atNumber = true;
+                        this.tempValue += symbol;
+                    } else if(
+                        this.atValue &&
+                        this.atNumber &&
+                        code === Flag.POINT
+                    ) {
+                        if(this.tempValue.includes(".")) {
+                            throw new SyntaxError("Invalid number", i);
+                        }
+                        this.tempValue += symbol;
+                    } else if(
+                        this.atValue &&
+                        code === 116                    /*t*/ &&
+                        this.getCharCode(i + 1) === 114 /*r*/ &&
+                        this.getCharCode(i + 2) === 117 /*u*/ &&
+                        this.getCharCode(i + 3) === 101 /*e*/
                     ) {
                         this.tempValueType = ValueType.BOOLEAN;
-                        this.tempKeyword = Keyword.TRUE;
+                        this.tempValue = Keyword.TRUE;
                         i += 3;
                         continue;
                     } else if(
                         this.atValue &&
-                        code === 102                              /*f*/ &&
-                        this.jsonStr[i + 1].charCodeAt(0) === 97  /*a*/ &&
-                        this.jsonStr[i + 2].charCodeAt(0) === 108 /*l*/ &&
-                        this.jsonStr[i + 3].charCodeAt(0) === 115 /*s*/ &&
-                        this.jsonStr[i + 4].charCodeAt(0) === 101 /*e*/
+                        code === 102                    /*f*/ &&
+                        this.getCharCode(i + 1) === 97  /*a*/ &&
+                        this.getCharCode(i + 2) === 108 /*l*/ &&
+                        this.getCharCode(i + 3) === 115 /*s*/ &&
+                        this.getCharCode(i + 4) === 101 /*e*/
                     ) {
                         this.tempValueType = ValueType.BOOLEAN;
-                        this.tempKeyword = Keyword.FALSE;
+                        this.tempValue = Keyword.FALSE;
                         i += 4;
                         continue;
                     } else if(
                         this.atValue &&
-                        code === 110                              /*n*/ &&
-                        this.jsonStr[i + 1].charCodeAt(0) === 117 /*u*/ &&
-                        this.jsonStr[i + 2].charCodeAt(0) === 108 /*l*/ &&
-                        this.jsonStr[i + 3].charCodeAt(0) === 108 /*l*/
+                        code === 110                    /*n*/ &&
+                        this.getCharCode(i + 1) === 117 /*u*/ &&
+                        this.getCharCode(i + 2) === 108 /*l*/ &&
+                        this.getCharCode(i + 3) === 108 /*l*/
                     ) {
                         this.tempValueType = ValueType.NULL;
-                        this.tempKeyword = Keyword.NULL;
+                        this.tempValue = Keyword.NULL;
                         i += 3;
                         continue;
-                    } else if(!this.atValue && code === Flag.SPACE) {
+                    } else if(code === Flag.SPACE || code === Flag.NEWLINE) {
                         continue;
                     } else {
-                        // @error unexpected char
+                        throw new SyntaxError("Unexpected char \""+ symbol +"\"", i);
                     }
                     break;
             }
         }
+    }
+
+    private getCharCode(index: number): number {
+        return this.jsonStr[index].charCodeAt(0);
     }
 
     private pushObjectItem(): void {
@@ -174,6 +255,13 @@ export class JSONCompiler<T = any> {
         this.tempKey = "";
         this.tempValue = "";
         this.tempValueType = undefined;
+    }
+
+    private pushObject(): void {
+        var compiler = new JSONCompiler(this.tempObject);
+        this.tokenMgr.pushObjectItem(this.tempKey, compiler.tokenMgr.getTree().unsafeToObjectToken(this.tempKey));
+        this.tempKey = "";
+        this.tempObject = "";
     }
 
     public make(): T {
@@ -185,8 +273,10 @@ export class JSONCompiler<T = any> {
         const tree = this.tokenMgr.getTree();
         var obj = new Object();
 
-        tree.forEach((key: ObjectKey, token) => {
-            obj[token.key] = token.value;
+        tree.forEach((token) => {
+            var value = token.value;
+
+            obj[token.key] = value;
         });
 
         return obj as T;
@@ -196,8 +286,8 @@ export class JSONCompiler<T = any> {
         const tree = this.tokenMgr.getTree();
         var arr = new Array();
 
-        tree.forEach((key: ArrayKey, token) => {
-            arr[key] = token.value;
+        tree.forEach((token) => {
+            arr[token.key] = token.value;
         });
 
         return arr as T;

@@ -1,46 +1,53 @@
 import { ValueType } from "./compiler";
-import { AnyKey } from "./token/jsonToken";
+import { ArrayToken } from "./token/arrayToken";
+import { ObjectToken } from "./token/objectToken";
 import { RootToken } from "./token/rootToken";
 import { AllowableValueTypes, ValueToken } from "./token/valueToken";
+import { ObjectLike, ArrayLike } from "./token/jsonToken";
 
 export class TokenManager {
     private tree: RootToken;
 
-    public createTree<T extends AnyKey>(): void {
-        if(this.tree) return;
+    public createObjectTree(): void {
+        this.tree = RootToken.createObjectRoot();
+    }
 
-        this.tree = RootToken.create<T>();
+    public createArrayTree(): void {
+        this.tree = RootToken.createArrayRoot();
     }
 
     public getTree(): RootToken {
         return this.tree;
     }
 
-    public pushObjectItem(key: string, value: string, type: ValueType): void {
-        if(this.isExist(key)) return; // @error
-        this.tree.value.set(key, new ValueToken(key, this.transformToType(value, type)));
+    public pushObjectItem(key: string, value: string | ObjectToken<any> | ArrayToken<any>, type?: ValueType): void {
+        if(typeof value === "string") {
+            this.tree.push(new ValueToken(key, TokenManager.transformToType(value, type)));
+        } else {
+            this.tree.push(value);
+        }
     }
 
-    public pushArrayValue(value: string, type: ValueType): void {
+    public pushArrayItem(value: string, type: ValueType): void {
         /** @todo */
     }
 
     public isExist(key: string): boolean {
-        return this.tree.value.has(key);
+        if(this.tree.value.hasOwnProperty) return this.tree.value.hasOwnProperty(key);
     }
 
     public print(): void {
         console.log(this.tree);
     }
 
-    private transformToType(value: string, type: ValueType): AllowableValueTypes {
+    public static transformToType(value: string, type: ValueType): AllowableValueTypes {
         switch(type) {
             case ValueType.STRING:
                 return value;
             case ValueType.NUMBER:
                 return parseFloat(value);
             case ValueType.BOOLEAN:
-                return !!value;
+                return value === "true" ? true : false;
             case ValueType.NULL:
                 return null;
         }

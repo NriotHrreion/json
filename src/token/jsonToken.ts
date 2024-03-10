@@ -1,15 +1,20 @@
+import { RootToken } from "./rootToken";
 import { ValueToken } from "./valueToken";
 
-export type ObjectKey = string;
-export type ArrayKey = number;
-export type AnyKey = ObjectKey | ArrayKey;
+export type ObjectLike = { [key: string]: ValueToken<any> };
+export type ArrayLike = RootToken<any>[];
+export type AnyLike = ObjectLike | ArrayLike;
 
 export enum JSONValueType {
     OBJECT, ARRAY
 }
 
-export abstract class JSONToken<K> extends ValueToken<Map<K, ValueToken<any>>> {
-    public forEach(cb: (key: K, value: ValueToken<any>) => void): void {
-        this.value.forEach((value, key) => cb(key, value));
+export abstract class JSONToken<O extends AnyLike> extends ValueToken<O> {
+    public abstract push(value: ValueToken<any>): void;
+
+    public forEach(cb: (value: ValueToken<any>) => void): void {
+        for(let key in this.value) {
+            cb(this.value[key] as ValueToken<any>);
+        }
     }
 }
