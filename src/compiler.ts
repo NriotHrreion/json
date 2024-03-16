@@ -4,6 +4,7 @@ import { SyntaxError } from "./error/syntaxError";
 import { RootToken } from "./token/rootToken";
 import { ObjectToken } from "./token/objectToken";
 import { ArrayToken } from "./token/arrayToken";
+import { UnknownError } from "./error/unknownError";
 
 /** @todo backslash escaping */
 
@@ -64,6 +65,11 @@ export class JSONCompiler<T = any> {
     }
 
     public tokenize(): void {
+        if(
+            this.getCharCode(0) !== Flag.LEFT_BRACE ||
+            this.getCharCode(0) !== Flag.LEFT_BRACKET
+        ) throw new UnknownError("Invalid JSON", 0);
+
         for(let i = 0; i < this.jsonStr.length; i++) {
             const symbol = this.jsonStr[i];
             const code = this.getCharCode(i);

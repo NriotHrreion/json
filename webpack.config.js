@@ -41,7 +41,12 @@ module.exports = {
     optimization: {
         minimize: true,
         minimizer: [new TerserWebpackPlugin({
-            extractComments: true
+            extractComments: false,
+            terserOptions: {
+                format: {
+                    comments: false
+                }
+            }
         })]
     },
     resolve: {
