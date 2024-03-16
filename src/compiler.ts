@@ -66,7 +66,7 @@ export class JSONCompiler<T = any> {
 
     public tokenize(): void {
         if(
-            this.getCharCode(0) !== Flag.LEFT_BRACE ||
+            this.getCharCode(0) !== Flag.LEFT_BRACE &&
             this.getCharCode(0) !== Flag.LEFT_BRACKET
         ) throw new UnknownError("Invalid JSON", 0);
 
