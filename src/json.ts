@@ -6,6 +6,7 @@ export class JSON {
         return compiler.make();
     }
 
+    /** @todo */
     public static stringify<T>(obj: T): string {
         return "";
     }

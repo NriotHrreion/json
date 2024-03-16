@@ -3,7 +3,6 @@ import { ArrayToken } from "./token/arrayToken";
 import { ObjectToken } from "./token/objectToken";
 import { RootToken } from "./token/rootToken";
 import { AllowableValueTypes, ValueToken } from "./token/valueToken";
-import { ObjectLike, ArrayLike } from "./token/jsonToken";
 
 export class TokenManager {
     private tree: RootToken;
@@ -28,8 +27,12 @@ export class TokenManager {
         }
     }
 
-    public pushArrayItem(value: string, type: ValueType): void {
-        /** @todo */
+    public pushArrayItem(value: string | ObjectToken<any> | ArrayToken<any>, type?: ValueType): void {
+        if(typeof value === "string") {
+            this.tree.push(TokenManager.transformToType(value, type));
+        } else {
+            this.tree.push(value);
+        }
     }
 
     public isExist(key: string): boolean {

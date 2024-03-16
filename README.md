@@ -14,7 +14,7 @@ JSON.parse(`
     "ok": true,
     "props": null
 }
-`); // { abc: 123, test: "Hello", ok: true, props: null }
+`); // { abc: 123, test: 'Hello', ok: true, props: null }
 ```
 
 ## LICENSE

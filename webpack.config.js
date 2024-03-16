@@ -2,11 +2,12 @@ const path = require("path");
 
 const TerserWebpackPlugin = require("terser-webpack-plugin");
 const { CleanWebpackPlugin } = require("clean-webpack-plugin");
+const { WebpackDistBanner } = require("webpack-dist-banner");
 
 module.exports = {
     entry: "./src/index.ts",
     output: {
-        filename: "bundle.js",
+        filename: "json.js",
         path: path.resolve(__dirname, "build"),
         libraryTarget: "umd",
         globalObject: "this"
@@ -30,12 +31,17 @@ module.exports = {
         ]
     },
     plugins: [
-        new CleanWebpackPlugin()
+        new CleanWebpackPlugin(),
+        new WebpackDistBanner({
+            banner: `/* Copyright (c) NriotHrreion 2024 */
+/* Repo: https://github.com/NriotHrreion/json */\n`,
+            extensions: ["js"]
+        })
     ],
     optimization: {
         minimize: true,
         minimizer: [new TerserWebpackPlugin({
-            extractComments: false
+            extractComments: true
         })]
     },
     resolve: {

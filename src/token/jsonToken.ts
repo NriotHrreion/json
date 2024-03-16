@@ -1,8 +1,7 @@
-import { RootToken } from "./rootToken";
-import { ValueToken } from "./valueToken";
+import { AllowableValueTypes, ValueToken } from "./valueToken";
 
 export type ObjectLike = { [key: string]: ValueToken<any> };
-export type ArrayLike = RootToken<any>[];
+export type ArrayLike = (ValueToken<any> | AllowableValueTypes)[];
 export type AnyLike = ObjectLike | ArrayLike;
 
 export enum JSONValueType {

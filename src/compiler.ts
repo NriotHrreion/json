@@ -1,6 +1,9 @@
 import { JSONValueType } from "./token/jsonToken";
 import { TokenManager } from "./tokenManager";
 import { SyntaxError } from "./error/syntaxError";
+import { RootToken } from "./token/rootToken";
+import { ObjectToken } from "./token/objectToken";
+import { ArrayToken } from "./token/arrayToken";
 
 /** @todo backslash escaping */
 
@@ -57,7 +60,7 @@ export class JSONCompiler<T = any> {
         this.jsonStr = this.jsonStr.trim();
 
         this.tokenize();
-        this.tokenMgr.print(); // for dev
+        // this.tokenMgr.print(); // for dev
     }
 
     public tokenize(): void {
@@ -65,8 +68,10 @@ export class JSONCompiler<T = any> {
             const symbol = this.jsonStr[i];
             const code = this.getCharCode(i);
 
-            if(this.atObject) {
-                this.tempObject += symbol;
+            if(this.atObject || this.atArray) {
+                this.atObject
+                ? this.tempObject += symbol
+                : this.tempArray += symbol;
 
                 switch(code) {
                     case Flag.LEFT_BRACE:
@@ -74,9 +79,15 @@ export class JSONCompiler<T = any> {
                         this.layer++;
                         break;
                     case Flag.RIGHT_BRACE:
-                    case Flag.RIGHT_BRACKET:
                         if(this.layer === this.tempLayer) {
                             this.atObject = false;
+                            this.tempLayer = undefined;
+                        }
+                        this.layer--;
+                        break;
+                    case Flag.RIGHT_BRACKET:
+                        if(this.layer === this.tempLayer) {
+                            this.atArray = false;
                             this.tempLayer = undefined;
                         }
                         this.layer--;
@@ -102,23 +113,43 @@ export class JSONCompiler<T = any> {
                     if(i === 0) {
                         this.tokenMgr.createArrayTree();
                         this.mode = JSONValueType.ARRAY;
+                    } else if(!this.atArray) { // array start
+                        this.atArray = true;
+                        this.tempLayer = this.layer;
+                        this.tempArray += symbol;
                     }
                     break;
                 case Flag.RIGHT_BRACE:
-                    if(this.atValue && this.tempObject.length === 0) {
+                    if(this.atValue && this.tempObject.length === 0 && this.tempArray.length === 0) {
                         this.atNumber = false; // number end
                         this.atValue = false; // value end
-                        this.pushObjectItem();
+                        this.pushItem();
                     } else if(this.tempObject.length !== 0) { // object end
                         this.pushObject();
+                    } else if(this.tempArray.length !== 0) { // array end
+                        this.pushArray();
                     }
 
                     this.layer--;
                     break;
                 case Flag.RIGHT_BRACKET:
+                    if(this.atValue && this.tempArray.length === 0 && this.tempObject.length === 0) {
+                        this.atNumber = false; // number end
+                        this.atValue = false; // value end
+                        this.pushItem();
+                    } else if(this.tempArray.length !== 0) { // array end
+                        this.pushArray();
+                    } else if(this.tempObject.length !== 0) { // object end
+                        this.pushObject();
+                    }
+                    
                     this.layer--;
                     break;
                 case Flag.DOUBLE_QUOTE:
+                    if(!this.atValue && this.mode === JSONValueType.ARRAY) { // array string start
+                        this.atValue = true;
+                    }
+                    
                     if(!this.atValue && !this.atKey) { // key start
                         this.atKey = true;
                     } else if(!this.atValue && this.atKey) { // key end
@@ -139,13 +170,13 @@ export class JSONCompiler<T = any> {
                     if(this.atValue && this.tempObject.length === 0 && this.tempArray.length === 0) {
                         this.atNumber = false; // number end
                         this.atValue = false; // value end
-                        this.pushObjectItem();
+                        this.pushItem();
                     } else if(this.tempObject.length !== 0) { // object end
                         this.atValue = false;
                         this.pushObject();
                     } else if(this.tempArray.length !== 0) { // array end
                         this.atValue = false;
-                        /** @todo */
+                        this.pushArray();
                     } else {
                         throw new SyntaxError("Unexpected comma", i);
                     }
@@ -161,7 +192,7 @@ export class JSONCompiler<T = any> {
                 case 55: // 7
                 case 56: // 8
                 case 57: // 9
-                    if(!this.atValue && !this.atNumber) {
+                    if(!this.atValue && !this.atNumber && this.mode !== JSONValueType.ARRAY) {
                         throw new SyntaxError("Unexpected number \""+ symbol +"\"", i);
                     }
 
@@ -173,6 +204,9 @@ export class JSONCompiler<T = any> {
                     if(this.tempValue.length === 0) { // number start
                         this.tempValueType = ValueType.NUMBER;
                         this.atNumber = true;
+                        if(this.mode === JSONValueType.ARRAY) { // array number start
+                            this.atValue = true;
+                        }
                     }
                     this.tempValue += symbol;
                     break;
@@ -203,35 +237,38 @@ export class JSONCompiler<T = any> {
                         }
                         this.tempValue += symbol;
                     } else if(
-                        this.atValue &&
+                        (this.atValue || this.mode === JSONValueType.ARRAY) &&
                         code === 116                    /*t*/ &&
                         this.getCharCode(i + 1) === 114 /*r*/ &&
                         this.getCharCode(i + 2) === 117 /*u*/ &&
                         this.getCharCode(i + 3) === 101 /*e*/
                     ) {
+                        if(this.mode === JSONValueType.ARRAY) this.atValue = true;
                         this.tempValueType = ValueType.BOOLEAN;
                         this.tempValue = Keyword.TRUE;
                         i += 3;
                         continue;
                     } else if(
-                        this.atValue &&
+                        (this.atValue || this.mode === JSONValueType.ARRAY) &&
                         code === 102                    /*f*/ &&
                         this.getCharCode(i + 1) === 97  /*a*/ &&
                         this.getCharCode(i + 2) === 108 /*l*/ &&
                         this.getCharCode(i + 3) === 115 /*s*/ &&
                         this.getCharCode(i + 4) === 101 /*e*/
                     ) {
+                        if(this.mode === JSONValueType.ARRAY) this.atValue = true;
                         this.tempValueType = ValueType.BOOLEAN;
                         this.tempValue = Keyword.FALSE;
                         i += 4;
                         continue;
                     } else if(
-                        this.atValue &&
+                        (this.atValue || this.mode === JSONValueType.ARRAY) &&
                         code === 110                    /*n*/ &&
                         this.getCharCode(i + 1) === 117 /*u*/ &&
                         this.getCharCode(i + 2) === 108 /*l*/ &&
                         this.getCharCode(i + 3) === 108 /*l*/
                     ) {
+                        if(this.mode === JSONValueType.ARRAY) this.atValue = true;
                         this.tempValueType = ValueType.NULL;
                         this.tempValue = Keyword.NULL;
                         i += 3;
@@ -250,46 +287,75 @@ export class JSONCompiler<T = any> {
         return this.jsonStr[index].charCodeAt(0);
     }
 
-    private pushObjectItem(): void {
-        this.tokenMgr.pushObjectItem(this.tempKey, this.tempValue, this.tempValueType);
-        this.tempKey = "";
+    private pushItem(): void {
+        if(this.mode === JSONValueType.ARRAY) {
+            this.tokenMgr.pushArrayItem(this.tempValue, this.tempValueType);
+        } else {
+            this.tokenMgr.pushObjectItem(this.tempKey, this.tempValue, this.tempValueType);
+            this.tempKey = "";
+        }
         this.tempValue = "";
         this.tempValueType = undefined;
     }
 
     private pushObject(): void {
         var compiler = new JSONCompiler(this.tempObject);
-        this.tokenMgr.pushObjectItem(this.tempKey, compiler.tokenMgr.getTree().unsafeToObjectToken(this.tempKey));
+        this.mode === JSONValueType.ARRAY
+        ? this.tokenMgr.pushArrayItem(compiler.tokenMgr.getTree().unsafeToObjectToken(this.tempKey))
+        : this.tokenMgr.pushObjectItem(this.tempKey, compiler.tokenMgr.getTree().unsafeToObjectToken(this.tempKey));
         this.tempKey = "";
         this.tempObject = "";
     }
 
-    public make(): T {
-        if(this.mode === JSONValueType.OBJECT) return this.makeObject();
-        if(this.mode === JSONValueType.ARRAY) return this.makeArray();
+    private pushArray(): void {
+        var compiler = new JSONCompiler(this.tempArray);
+        this.mode === JSONValueType.ARRAY
+        ? this.tokenMgr.pushArrayItem(compiler.tokenMgr.getTree().unsafeToArrayToken(this.tempKey))
+        : this.tokenMgr.pushObjectItem(this.tempKey, compiler.tokenMgr.getTree().unsafeToArrayToken(this.tempKey));
+        this.tempKey = "";
+        this.tempArray = "";
     }
 
-    private makeObject(): T {
+    public make(): T {
         const tree = this.tokenMgr.getTree();
+
+        if(this.mode === JSONValueType.OBJECT) return JSONCompiler.makeObject(tree);
+        if(this.mode === JSONValueType.ARRAY) return JSONCompiler.makeArray(tree);
+    }
+
+    private static makeObject<O = any>(tree: RootToken): O {
         var obj = new Object();
 
         tree.forEach((token) => {
             var value = token.value;
 
+            if(token instanceof ObjectToken) {
+                value = JSONCompiler.makeObject(token.toRootToken());
+            } else if(token instanceof ArrayToken) {
+                value = JSONCompiler.makeArray(token.toRootToken());
+            }
+
             obj[token.key] = value;
         });
 
-        return obj as T;
+        return obj as O;
     }
 
-    private makeArray(): T {
-        const tree = this.tokenMgr.getTree();
+    private static makeArray<A = any>(tree: RootToken): A {
         var arr = new Array();
 
-        tree.forEach((token) => {
-            arr[token.key] = token.value;
+        tree.forEach((item) => {
+            var value = item;
+
+            if(item instanceof ObjectToken) {
+                value = JSONCompiler.makeObject(item.toRootToken());
+            } else if(item instanceof ArrayToken) {
+                value = JSONCompiler.makeArray(item.toRootToken());
+            }
+
+            arr.push(value);
         });
 
-        return arr as T;
+        return arr as A;
     }
 }
