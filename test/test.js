@@ -20,7 +20,7 @@ console.log(JSON.parse(`
             "test": null,
             "gggg": true,
             "aaa": false,
-            "basdfasdf": "HelloWorld",
+            "basdfasdf": "Hello World",
             "testobj": {"a":1,"b":{"q":"a"},"c":"3"},
             "testarr": [123, "abcD", true, false, null, {}, {"a":1,"b":{"q":"a"},"c":"3"}]
         },
@@ -28,9 +28,10 @@ console.log(JSON.parse(`
         "testarr": [123, "abcD", true, false, null, {}, {"a":1,"b":{"q":"a"},"c":"3"}]
     },
     "aaa": false,
-    "basdfasdf": "HelloWorld",
+    "basdfasdf": "Hello World",
     "testobj": {"a":1,"b":{"q":"a"},"c":"3"},
-    "testarr": [123, "abcD", true, false, null, {}, {"a":1,"b":{"q":"a"},"c":"3"}]
+    "testarr": [123, "abcD", true, false, null, {}, {"a":1,"b":{"q":"a"},"c":"3"}],
+    "escaping": "\\"\\""
 }
 `));
 

@@ -1,4 +1,4 @@
-export class StringBuilder {
+export class JSONStringBuilder {
     private str: string;
 
     public constructor() {

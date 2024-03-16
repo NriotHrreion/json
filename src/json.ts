@@ -1,5 +1,5 @@
 import { JSONCompiler } from "./compiler";
-import { StringBuilder } from "./stringBuilder";
+import { JSONStringBuilder } from "./stringBuilder";
 
 export class JSON {
     public static parse<T = any>(str: string): T {
@@ -8,7 +8,7 @@ export class JSON {
     }
 
     public static stringify<T extends Object>(obj: T): string {
-        var sb = new StringBuilder();
+        var sb = new JSONStringBuilder();
 
         if(Array.isArray(obj)) {
             sb.add("[");

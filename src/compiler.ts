@@ -6,8 +6,6 @@ import { ObjectToken } from "./token/objectToken";
 import { ArrayToken } from "./token/arrayToken";
 import { UnknownError } from "./error/unknownError";
 
-/** @todo backslash escaping */
-
 enum Flag {
     LEFT_BRACE = 123, // {
     RIGHT_BRACE = 125, // }
@@ -163,8 +161,11 @@ export class JSONCompiler<T = any> {
                     } else if(this.atValue && !this.atString) { // string start
                         this.atString = true;
                         this.tempValueType = ValueType.STRING;
-                    } else if(this.atValue && this.atString) { // string end
+                    } else if(this.atValue && this.atString && this.getCharCode(i - 1) !== Flag.BACKSLASH) { // string end
                         this.atString = false;
+                    } else if(this.atValue && this.atString && this.getCharCode(i - 1) === Flag.BACKSLASH) { // escaping double quote
+                        this.tempValue = this.tempValue.substring(0, this.tempValue.length - 1); // remove the backslash
+                        this.tempValue += symbol;
                     } else {
                         throw new SyntaxError("Unexpected quote", i);
                     }
