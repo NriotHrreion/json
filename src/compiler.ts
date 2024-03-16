@@ -199,8 +199,18 @@ export class JSONCompiler<T = any> {
                 case 55: // 7
                 case 56: // 8
                 case 57: // 9
-                    if(!this.atValue && !this.atNumber && this.mode !== JSONValueType.ARRAY) {
+                    if(
+                        !this.atKey &&
+                        !this.atValue &&
+                        !this.atNumber &&
+                        this.mode !== JSONValueType.ARRAY
+                    ) {
                         throw new SyntaxError("Unexpected number \""+ symbol +"\"", i);
+                    }
+
+                    if(this.atKey) {
+                        this.tempKey += symbol;
+                        continue;
                     }
 
                     if(this.atString) {

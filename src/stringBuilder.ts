@@ -24,6 +24,7 @@ export class JSONStringBuilder {
     public pushValue(value: any): void {
         switch(typeof value) {
             case "string":
+                value = value.replaceAll("\"", "\\\"");
                 this.add(`"${value}"`);
                 break;
             case "number":
